@@ -235,6 +235,23 @@ ul.says{list-style:none;margin:0;padding:0}ul.says li{display:flex;gap:10px;alig
 @container (max-width:640px){.grg.g4{grid-template-columns:1fr}}
 @media screen and (max-width:900px){.grg.g4{grid-template-columns:1fr}.tt-row{grid-template-columns:1fr}}
 @media print{.gr .grg.g4{grid-template-columns:1.25fr 1fr 1fr}.gr .ttm{margin:2px 0;font-size:10px}.gr .ttl{font-size:9.5px}}
+
+/* Rivales (scouting) */
+.scrow{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin:6px 0}
+.sctt{font-size:12px;font-weight:700;color:var(--mut);text-transform:uppercase;letter-spacing:.04em;margin-right:4px}
+.scchip{display:inline-block;padding:3px 10px;border-radius:999px;font-size:12.5px;font-weight:600;border:1px solid var(--line)}
+.scchip.bad{background:color-mix(in srgb,var(--bad) 14%,transparent);border-color:color-mix(in srgb,var(--bad) 45%,var(--line))}
+.scchip.ok{background:color-mix(in srgb,var(--ok) 14%,transparent);border-color:color-mix(in srgb,var(--ok) 45%,var(--line))}
+.scgame>summary{cursor:pointer;list-style:none;display:flex;flex-wrap:wrap;gap:10px;align-items:baseline}
+.scgame>summary::-webkit-details-marker{display:none}
+.scgame>summary:before{content:'▸';color:var(--mut)}.scgame[open]>summary:before{content:'▾'}
+.scstack{display:flex;height:14px;border-radius:7px;overflow:hidden;background:var(--line)}.scstack i{display:block;height:100%}
+.sclegend{display:flex;flex-wrap:wrap;gap:12px;font-size:12px;color:var(--mut);margin-top:6px}.sclegend i{display:inline-block;width:9px;height:9px;border-radius:2px;margin-right:5px}
+.scbar{display:grid;grid-template-columns:150px 1fr 32px;gap:8px;align-items:center;font-size:13px;margin:3px 0}.scbar div{background:var(--line);height:8px;border-radius:4px}.scbar div i{display:block;height:100%;background:var(--s1);border-radius:4px}.scbar b{text-align:right}
+.sccard{margin-bottom:12px}.sccard h4{margin:0 0 8px}
+details.scsub{margin-top:12px}details.scsub>summary{cursor:pointer;font-weight:700;padding:6px 0}
+@media(max-width:480px){#lgt.seg button{padding:6px 8px}}
+td.scok{color:var(--ok);font-weight:700}td.scko{color:var(--bad);font-weight:700}
 </style>
 </head>
 <body>
@@ -1671,7 +1688,7 @@ function wireGoals(root){root.onchange=e=>{const i=e.target.closest('.gin');if(!
 /* ============ Liga: clasificación y estudio competitivo ============ */
 const RO=false;
 const tkey=s=>String(s||'').normalize('NFD').replace(/[̀-ͯ]/g,'').toLowerCase().replace(/[^a-z0-9]+/g,' ').trim();
-function LG(){const L=S.league=S.league||{};if(!Array.isArray(L.rounds))L.rounds=[];if(L.spots==null)L.spots=4;if(L.total===undefined)L.total=null;if(L.me==null)L.me='';return L}
+function LG(){const L=S.league=S.league||{};if(!Array.isArray(L.rounds))L.rounds=[];if(!Array.isArray(L.scouts))L.scouts=[];if(L.spots==null)L.spots=4;if(L.total===undefined)L.total=null;if(L.me==null)L.me='';return L}
 const numOrNull=v=>(v===''||v==null||isNaN(+v))?null:+v;
 function lgFlat(L){
  const names={},out=[];
@@ -1868,17 +1885,531 @@ function lgEstudio(c){
  <h3>Ataque y defensa de la liga</h3><div class="card">${lgScatter(c)||'<p class="mut">Hacen falta al menos tres equipos con partidos.</p>'}<p class="note">Cada punto es un equipo. Tú eres el naranja. Cuanto más arriba y a la derecha, mejor.</p></div>
  <h3>Lo que cambia entre ganar y perder</h3><div class="card scroll">${lgWinLoss()}</div>`;
 }
+/* ===== Rivales: scouting con las jugadas publicadas por la FBCV (sin vídeo) ===== */
+const SC_LEN=10,SC_OT=5;
+const scT=(p,m)=>p<=4?(p-1)*SC_LEN+m:4*SC_LEN+(p-5)*SC_OT+m;
+function scFmt(te){
+ if(te<=0)return 'el inicio';
+ let p,m;
+ if(te<=4*SC_LEN){p=Math.ceil(te/SC_LEN);m=te-(p-1)*SC_LEN;return 'cuarto '+p+', min '+m}
+ p=Math.ceil((te-4*SC_LEN)/SC_OT);m=te-4*SC_LEN-(p-1)*SC_OT;return 'prórroga '+p+', min '+m;
+}
+const scTitle=w=>/\./.test(w)?w:w.charAt(0).toUpperCase()+w.slice(1).toLowerCase();
+function scShort(full){const m=/^#(\d+)\s+(.*)$/.exec(full||'');if(!m)return full||'';return '#'+m[1]+' '+m[2].split(/\s+/).slice(0,2).map(scTitle).join(' ')}
+const scNum=full=>{const m=/^#(\d+)/.exec(full||'');return m?+m[1]:999};
+
+function scKind(txt){
+ let m;
+ if((m=/^Canasta de ([123])$/i.exec(txt)))return{k:'p'+m[1]};
+ if(/^Intento fallado de 1$/i.test(txt))return{k:'fm'};
+ if((m=/^(Personal|Antideportiva|T[eé]cnica|Descalificante)(?:\s+(\d)\s+tiros?\s+libres?)?(?:,\s*(\d+)a\s+falta)?$/i.exec(txt)))
+  return{k:'f',u:/^Personal$/i.test(m[1])?0:1,x:m[2]?+m[2]:0,n:m[3]?+m[3]:0};
+ if(/^Entra al campo$/i.test(txt))return{k:'in'};
+ if(/^Sale del campo$/i.test(txt))return{k:'out'};
+ if(/^Tiempo muerto$/i.test(txt))return{k:'to'};
+ if(/^Fin de per[ií]odo$/i.test(txt))return{k:'end'};
+ if(/^Salto inicial/i.test(txt))return{k:'sj',w:/ganado/i.test(txt)?1:0};
+ return{k:'o',tx:txt};
+}
+
+/* Lee el texto copiado de la pestaña «Jugadas» de la web de la FBCV */
+function scParse(raw,names){
+ let txt=String(raw||'').replace(/\r/g,'');
+ /* Línea opcional «EQUIPOS: Local | Visitante» (la web de la FBCV no deja copiar el marcador de la cabecera) */
+ const em=/^[ \t]*EQUIPOS?\s*:\s*(.+?)\s*(?:\||\s-\s|\s+vs\.?\s+)\s*(.+?)[ \t]*$/mi.exec(txt);
+ if(em){names=[em[1],em[2]];txt=txt.replace(em[0],'')}
+ const ci=txt.search(/Cronolog[ií]a del partido/i);
+ if(ci<0)return{err:'No encuentro «Cronología del partido»: abre la pestaña Jugadas en la web de la FBCV, copia toda la página y pégala aquí.'};
+ const head=txt.slice(0,ci),body=txt.slice(ci);
+ const dm=/(\d{2}\/\d{2}\/\d{4})(?:\s+(\d{1,2}:\d{2}))?/.exec(head);
+ const teams=[];let m;const hre=/(\d{1,3})\s*((?:P\d+\s*\d+\s*)+)\s*([^\n]+)/g;
+ while((m=hre.exec(head)))teams.push({s:+m[1],q:[...m[2].matchAll(/P(\d+)\s*(\d+)/g)].map(x=>+x[2]),name:m[3].trim()});
+ let tms,tk,noHead=false;
+ if(teams.length>=2){tms=teams.slice(-2);tk=tms.map(t=>tkey(t.name))}
+ else{
+  const nm=(names||[]).map(x=>String(x||'').trim());
+  if(nm.length<2||!nm[0]||!nm[1]){
+   const found=[...new Set(body.split('\n').map(s=>s.trim()).filter(s=>/^[A-ZÁÉÍÓÚÑ0-9][A-ZÁÉÍÓÚÑ0-9 .\-ªº()]{5,}$/.test(s)&&!/^#/.test(s)&&!/^(MIN|PTS|TL|SOBRE NOSOTROS|S[ÍI]GUENOS|LEYENDA)\b/.test(s)))].slice(0,2);
+   return{err:'La web de la FBCV no deja copiar la cabecera (equipos y marcador). Escribe abajo los dos equipos —el de la izquierda y el de la derecha de la cabecera— y pulsa de nuevo.',needTeams:true,found};
+  }
+  tms=nm.slice(0,2).map(n=>({name:n,s:0,q:[]}));tk=tms.map(t=>tkey(t.name));noHead=true;
+ }
+ const pl=[],pix={},ev=[];
+ const pidx=k=>{if(pix[k]==null){pix[k]=pl.length;pl.push(k)}return pix[k]};
+ const rm=/Min:\s*(\d+)\s*Periodo:\s*(\d+)\s*Marcador:\s*(\d+)\s*-\s*(\d+)/g;let last=0;
+ while((m=rm.exec(body))){
+  const ch=body.slice(last,m.index).split('\n').map(s=>s.trim()).filter(s=>s&&!/^[A-Za-zÁÉÍÓÚÑáéíóúñ]$/.test(s));
+  last=m.index+m[0].length;
+  const tx=ch.length?ch[ch.length-1]:'',ac=ch.length>1?ch[ch.length-2]:'';
+  const e=Object.assign({p:+m[2],m:+m[1],a:+m[3],b:+m[4],i:null,tm:null},scKind(tx));
+  if(/^#\d+\s/.test(ac))e.i=pidx(ac);else{const ti=tk.indexOf(tkey(ac));if(ti>=0)e.tm=ti+1}
+  ev.push(e);
+ }
+ if(!ev.length)return{err:'No he encontrado ninguna jugada en el texto.'};
+ const lastE=ev[ev.length-1],warn=[];
+ if(noHead){
+  tms[0].s=lastE.a;tms[1].s=lastE.b;
+  const ps=[...new Set(ev.map(e=>e.p))].sort((x,y)=>x-y);let pa=0,pb=0;
+  ps.forEach(p=>{const le=ev.filter(e=>e.p===p).pop();tms[0].q.push(le.a-pa);tms[1].q.push(le.b-pb);pa=le.a;pb=le.b});
+  while(tms[0].q.length<4){tms[0].q.push(0);tms[1].q.push(0)}
+ }
+ if(lastE.a!==tms[0].s||lastE.b!==tms[1].s)warn.push(`El marcador de las jugadas (${lastE.a}-${lastE.b}) no coincide con el de la cabecera (${tms[0].s}-${tms[1].s}): puede que falte texto.`);
+ const date=dm?dm[1].split('/').reverse().join('-'):'';
+ return{id:uid(),key:tk.join('|')+'|'+date+'|'+tms[0].s+'-'+tms[1].s,date,hora:dm&&dm[2]||'',
+  comp:'',teams:tms,pl,ev,fix:{},warn};
+}
+
+/* Varios partidos en un mismo texto: sepáralos con una línea «=====PARTIDO=====» */
+function scParseAll(raw,names){
+ const parts=String(raw||'').split(/^\s*={3,}\s*PARTIDO\s*={3,}\s*$/mi).map(s=>s.trim()).filter(Boolean);
+ const games=[],errs=[];let need=null;
+ parts.forEach((p,i)=>{const r=scParse(p,names);if(r.err){errs.push((parts.length>1?`Partido ${i+1}: `:'')+r.err);if(r.needTeams)need=r.found||[]}else games.push(r)});
+ return{games,errs,need};
+}
+/* Guarda los partidos (si ya estaba, lo sustituye conservando las asignaciones manuales) */
+function scImportRaw(raw,names){
+ const L=LG(),{games,errs,need}=scParseAll(raw,names);
+ if(!games.length)return{ok:0,upd:0,errs,last:null,unk:0,need};
+ let ok=0,upd=0,unk=0,last=null;
+ games.forEach(r=>{
+  const d=L.scouts.findIndex(x=>x.key===r.key);
+  if(d>=0){r.fix=L.scouts[d].fix||{};L.scouts.splice(d,1);upd++}else ok++;
+  L.scouts.push(r);last=r;unk+=scAnalyze(r).unk.length;
+ });
+ save();
+ return{ok,upd,errs,last,unk,need};
+}
+
+/* Decide a qué equipo (1 = el de la izquierda del marcador, 2 = el de la derecha) pertenece cada jugador */
+function scAssign(g){
+ const ev=g.ev,tm=new Array(g.pl.length).fill(0);
+ const set=(i,t)=>{if(i!=null&&t&&!tm[i]){tm[i]=t;return true}return false};
+ Object.keys(g.fix||{}).forEach(i=>{tm[+i]=g.fix[i]});
+ let pa=0,pb=0;
+ ev.forEach(e=>{
+  const da=e.a-pa,db=e.b-pb;pa=e.a;pb=e.b;
+  if(/^p\d$/.test(e.k)){if(da>0&&db===0)set(e.i,1);else if(db>0&&da===0)set(e.i,2)}
+ });
+ for(let pass=0;pass<6;pass++){
+  let ch=false;
+  ev.forEach((e,ix)=>{
+   if(e.k!=='f'||!(e.x>0)||e.i==null)return;
+   const sh=[];
+   for(let j=ix+1;j<ev.length&&j<=ix+10&&sh.length<e.x;j++)if(ev[j].k==='p1'||ev[j].k==='fm')sh.push(ev[j].i);
+   if(tm[e.i]){sh.forEach(i=>{if(set(i,3-tm[e.i]))ch=true})}
+   else{const k=sh.find(i=>tm[i]);if(k!=null&&set(e.i,3-tm[k]))ch=true}
+  });
+  /* grupos de cambios: en cada grupo, entran tantos como salen en cada equipo */
+  let ix=0;
+  while(ix<ev.length){
+   if(ev[ix].k!=='in'&&ev[ix].k!=='out'){ix++;continue}
+   let j=ix;while(j<ev.length&&(ev[j].k==='in'||ev[j].k==='out'))j++;
+   const grp=ev.slice(ix,j),bal=[0,0,0],uo=[],ui=[];
+   grp.forEach(e=>{const t=tm[e.i];if(t)bal[t]+=e.k==='in'?1:-1;else(e.k==='in'?ui:uo).push(e.i)});
+   if(uo.length+ui.length===1){
+    if(uo.length&&bal[1]!==bal[2]){if(bal[1]>0&&bal[2]===0&&set(uo[0],1))ch=true;else if(bal[2]>0&&bal[1]===0&&set(uo[0],2))ch=true}
+    if(ui.length&&bal[1]!==bal[2]){if(bal[1]<0&&bal[2]===0&&set(ui[0],1))ch=true;else if(bal[2]<0&&bal[1]===0&&set(ui[0],2))ch=true}
+   }
+   ix=j;
+  }
+  /* los titulares son 5 por equipo */
+  const first={},seen=new Set();
+  ev.forEach(e=>{if(e.i!=null){seen.add(e.i);if((e.k==='in'||e.k==='out')&&first[e.i]==null)first[e.i]=e.k}});
+  const cand=[...seen].filter(i=>first[i]==='out'||first[i]==null);
+  const k=[0,0,0],un=[];cand.forEach(i=>{if(tm[i])k[tm[i]]++;else un.push(i)});
+  if(un.length){
+   if(k[2]===5&&5-k[1]===un.length)un.forEach(i=>{if(set(i,1))ch=true});
+   else if(k[1]===5&&5-k[2]===un.length)un.forEach(i=>{if(set(i,2))ch=true});
+  }
+  if(!ch)break;
+ }
+ return tm;
+}
+
+function scAnalyze(g){
+ const tm=scAssign(g),ev=g.ev;
+ const A={tm,unk:[],T:[null,null,null],endT:0};
+ const first={},seen=new Set();
+ ev.forEach(e=>{if(e.i!=null){seen.add(e.i);if((e.k==='in'||e.k==='out')&&first[e.i]==null)first[e.i]=e.k}});
+ seen.forEach(i=>{if(!tm[i])A.unk.push(i)});
+ const on=[null,new Set(),new Set()],since={},P=[null,{},{}],lstart=[0,0,0];
+ const mk=t=>({t,name:g.teams[t-1].name,score:g.teams[t-1].s,q:g.teams[t-1].q,pl:P[t],units:{},runs:[],scoreT:[],to:[],
+  ptsFT:0,pts2:0,pts3:0,n3:0,fta:0,ftm:0,fouls:{},foulsFT:0,sinCinco:0,starters:[]});
+ A.T[1]=mk(1);A.T[2]=mk(2);
+ const pst=i=>{const t=tm[i];if(!t)return null;return P[t][i]||(P[t][i]={i,t,pts:0,ftm:0,fta:0,t2:0,t3:0,fl:0,flT:[],min:0,pm:0,st:false})};
+ seen.forEach(i=>{const t=tm[i];if(!t)return;const p=pst(i);if(first[i]==='out'||first[i]==null){on[t].add(i);since[i]=0;p.st=true}});
+ [1,2].forEach(t=>{A.T[t].starters=[...on[t]].sort((x,y)=>scNum(g.pl[x])-scNum(g.pl[y]))});
+ const key=t=>[...on[t]].sort((x,y)=>x-y).join(',');
+ const unit=(t,k)=>A.T[t].units[k]||(A.T[t].units[k]={ids:k.split(',').map(Number),min:0,pf:0,pc:0});
+ const close=(t,te)=>{if(on[t].size===5&&te>lstart[t])unit(t,key(t)).min+=te-lstart[t];lstart[t]=te};
+ const D=ev.map((e,ix)=>[e.a-(ix?ev[ix-1].a:0),e.b-(ix?ev[ix-1].b:0)]);
+ let run=null,endT=0;
+ ev.forEach((e,ix)=>{
+  const te=scT(e.p,e.m);if(te>endT)endT=te;
+  const [da,db]=D[ix];
+  if(e.k==='in'||e.k==='out'){
+   const t=tm[e.i];
+   if(t){close(t,te);
+    if(e.k==='in'){on[t].add(e.i);since[e.i]=te;pst(e.i)}
+    else{on[t].delete(e.i);if(since[e.i]!=null){pst(e.i).min+=te-since[e.i];delete since[e.i]}}}
+   return;
+  }
+  if((da>0)!==(db>0)){
+   const ts=da>0?1:2,op=3-ts,d=da>0?da:db,TT=A.T[ts];
+   on[ts].forEach(i=>{P[ts][i].pm+=d});on[op].forEach(i=>{P[op][i].pm-=d});
+   if(on[ts].size===5)unit(ts,key(ts)).pf+=d;else TT.sinCinco+=d;
+   if(on[op].size===5)unit(op,key(op)).pc+=d;else A.T[op].sinCinco+=d;
+   TT.scoreT.push(te);
+   if(run&&run.t===ts){run.pts+=d;run.to=[e.a,e.b];run.t1=te}
+   else{if(run)A.T[run.t].runs.push(run);run={t:ts,pts:d,from:[e.a-da,e.b-db],to:[e.a,e.b],t0:te,t1:te}}
+   const p=pst(e.i);
+   if(p){p.pts+=d;
+    if(e.k==='p1'){p.ftm++;p.fta++;TT.ptsFT++;TT.ftm++;TT.fta++}
+    else if(e.k==='p2'){p.t2++;TT.pts2+=2}
+    else if(e.k==='p3'){p.t3++;TT.pts3+=3;TT.n3++}}
+   return;
+  }
+  if(e.k==='fm'){const p=pst(e.i);if(p){p.fta++;A.T[p.t].fta++}return}
+  if(e.k==='f'){
+   const p=pst(e.i);
+   if(p){p.fl=e.n||p.fl+1;p.flT.push({n:p.fl,te});const TT=A.T[p.t];TT.fouls[e.p]=(TT.fouls[e.p]||0)+1;if(e.x>0)TT.foulsFT++}
+   return;
+  }
+  if(e.k==='to'&&e.tm){
+   let against=0;
+   for(let j=ix-1;j>=0;j--){
+    const [xa,xb]=D[j],mine=e.tm===1?xa:xb,opp=e.tm===1?xb:xa;
+    if(mine>0)break;if(opp>0)against+=opp;
+   }
+   A.T[e.tm].to.push({te,a:e.a,b:e.b,against});
+  }
+ });
+ if(run)A.T[run.t].runs.push(run);
+ [1,2].forEach(t=>{
+  close(t,endT);
+  on[t].forEach(i=>{if(since[i]!=null)P[t][i].min+=endT-since[i]});
+  const TT=A.T[t];
+  TT.runs.sort((x,y)=>y.pts-x.pts);
+  const ts=[0,...TT.scoreT,endT];let best={len:0,from:0};
+  for(let k=1;k<ts.length;k++)if(ts[k]-ts[k-1]>best.len)best={len:ts[k]-ts[k-1],from:ts[k-1]};
+  TT.drought=best;
+ });
+ A.endT=endT;
+ const le=ev[ev.length-1];A.ok=le.a===g.teams[0].s&&le.b===g.teams[1].s;
+ return A;
+}
+
+const scPct=(a,b)=>b?Math.round(a/b*100):0;
+function scClaves(g,A,t){
+ const T=A.T[t],O=A.T[3-t],R=[],add=(g2,tone,txt,short)=>R.push({g:g2,tone,txt,short:short||null});
+ const nm=i=>`<b>${esc(scShort(g.pl[i]))}</b>`,sn=i=>esc(scShort(g.pl[i])),tot=T.score||0;
+ const pls=Object.values(T.pl);
+ const sc=[...pls].sort((a,b)=>b.pts-a.pts);
+ const ord=ids=>[...ids].sort((x,y)=>scNum(g.pl[x])-scNum(g.pl[y]));
+ /* Cómo anotan */
+ if(sc[0]&&tot){
+  const pc=scPct(sc[0].pts,tot);
+  add('anota',pc>=35?'bad':'neu',`${nm(sc[0].i)} anota el <b>${pc}%</b> de los puntos (${sc[0].pts} de ${tot}).`+(sc[1]&&(sc[0].pts+sc[1].pts)/tot>=.55?` Con ${nm(sc[1].i)} suman el ${scPct(sc[0].pts+sc[1].pts,tot)}%.`:''),pc>=35?`Depende de ${sn(sc[0].i)} (${pc}%)`:null);
+ }
+ if(T.n3<=1&&tot>=40)add('anota','neu',`Solo anotaron ${T.n3} triple${T.n3===1?'':'s'}: la anotación viene de dentro y de la línea.`,'Casi sin triples');
+ else if(T.n3>=5)add('anota','bad',`Anotaron ${T.n3} triples en el partido.`,`${T.n3} triples`);
+ /* Tiros libres y faltas */
+ if(T.fta>=8){
+  const pc=scPct(T.ftm,T.fta);
+  add('tl',pc<55?'ok':pc>=75?'bad':'neu',`Tiros libres: <b>${T.ftm}/${T.fta} (${pc}%)</b>. ${pc<55?'Fallan bastante: hacerles falta les sale caro.':pc>=75?'Son seguros desde la línea: mejor no regalar faltas.':''}`,pc<55?`Fallan tiros libres (${pc}%)`:pc>=75?`Seguros en tiros libres (${pc}%)`:null);
+ }
+ const fts=pls.filter(p=>p.fta>=3).sort((a,b)=>a.ftm/a.fta-b.ftm/b.fta);
+ if(fts.length>=2){const w=fts[0],b=fts[fts.length-1];add('tl','neu',`Peor desde la línea: ${nm(w.i)} (${w.ftm}/${w.fta}). Mejor: ${nm(b.i)} (${b.ftm}/${b.fta}). <span class="mut">Muestra pequeña.</span>`)}
+ if(T.fta-O.fta>=8)add('tl','bad',`Van mucho a la línea: ${T.fta} tiros libres frente a ${O.fta} del rival.`,`Van mucho a la línea (${T.fta} TL)`);
+ else if(O.fta-T.fta>=8)add('tl','ok',`Dan muchos tiros libres: el rival lanzó ${O.fta} y ellos ${T.fta}.`,`Dan tiros libres (${O.fta})`);
+ pls.filter(p=>p.fl>=4).sort((a,b)=>b.fl-a.fl).forEach(p=>{
+  const f4=p.flT.find(f=>f.n===4);
+  add('tl','ok',`${nm(p.i)} acabó con <b>${p.fl} faltas</b> en ${p.min} min${f4?` (la 4ª en ${scFmt(f4.te)})`:''}.`,`${sn(p.i)}: ${p.fl} faltas`);
+ });
+ const fq=Object.entries(T.fouls).sort((a,b)=>b[1]-a[1])[0];
+ if(fq&&fq[1]>=8)add('tl','neu',`Cometen muchas faltas en el cuarto ${fq[0]} (${fq[1]}).`);
+ /* Quintetos y rotación */
+ const stk=[...T.starters].sort((a,b)=>a-b).join(','),su=T.units[stk];
+ if(T.starters.length)add('quint','neu',`<b>Titulares:</b> ${ord(T.starters).map(nm).join(', ')}.`+(su?` Con ellos: ${su.pf}-${su.pc} en ${su.min} min.`:'')+(T.starters.length!==5?' (No he podido identificar los cinco.)':''));
+ const us=Object.values(T.units).filter(u=>u.min>=3).sort((a,b)=>(b.pf-b.pc)-(a.pf-a.pc));
+ if(us.length>=2){
+  const b=us[0],w=us[us.length-1];
+  add('quint','bad',`<b>Mejor quinteto</b> (${sg(b.pf-b.pc)} en ${b.min} min): ${ord(b.ids).map(nm).join(', ')}.`,`Mejor quinteto ${sg(b.pf-b.pc)}`);
+  if(w.pf-w.pc<0)add('quint','ok',`<b>Peor quinteto</b> (${sg(w.pf-w.pc)} en ${w.min} min): ${ord(w.ids).map(nm).join(', ')}.`);
+ }
+ const mins=pls.filter(p=>p.min>0).sort((a,b)=>b.min-a.min);
+ if(mins.length>=6){
+  const top5=mins.slice(0,5).reduce((s,p)=>s+p.min,0),all=mins.reduce((s,p)=>s+p.min,0),pc=scPct(top5,all);
+  add('quint',pc>=75?'bad':'neu',`Rotan ${mins.length} jugadores; los cinco que más juegan suman el ${pc}% de los minutos.${pc>=75?' Banquillo corto.':''}`,pc>=75?'Banquillo corto':null);
+ }
+ /* Rachas y tiempos muertos */
+ const r=T.runs[0];
+ if(r&&r.pts>=8)add('rachas','bad',`<b>Su mejor racha: ${r.pts}-0</b> (de ${scFmt(r.t0)} a ${scFmt(r.t1)}; el marcador pasó de ${r.from[0]}-${r.from[1]} a ${r.to[0]}-${r.to[1]}).`,`Racha de ${r.pts}-0`);
+ const rr=O.runs[0];
+ if(rr&&rr.pts>=8)add('rachas','ok',`Le hicieron una racha de ${rr.pts}-0 (${scFmt(rr.t0)} a ${scFmt(rr.t1)}).`,`Sufren rachas (${rr.pts}-0)`);
+ if(T.drought.len>=4)add('rachas','ok',`Llegaron a pasar <b>${T.drought.len} minutos sin anotar</b> (desde ${scFmt(T.drought.from)}).`,`${T.drought.len} min sin anotar`);
+ if(T.to.length){
+  const x=T.to[0],dif=t===1?x.a-x.b:x.b-x.a;
+  add('rachas','neu',`Primer tiempo muerto en ${scFmt(x.te)}, ${dif===0?'con empate':dif>0?`ganando por ${dif}`:`perdiendo por ${-dif}`}${x.against>=4?` tras ${x.against} puntos seguidos del rival`:''}. En total pidió ${T.to.length}.`);
+ }
+ /* Cuartos */
+ const qs=T.q.map((v,i)=>({n:i+1,a:v,b:O.q[i],d:v-O.q[i]}));
+ if(qs.length>=2){
+  const b=[...qs].sort((x,y)=>y.d-x.d)[0],w=[...qs].sort((x,y)=>x.d-y.d)[0];
+  add('cuartos','neu',`Mejor cuarto: el ${b.n} (${b.a}-${b.b}). Peor cuarto: el ${w.n} (${w.a}-${w.b}).`);
+ }
+ return R;
+}
+
+const scRival=g=>{
+ const me=tkey(S.settings.team||TEAM0),k=g.teams.map(t=>tkey(t.name));
+ const mine=k.map(x=>x===me||(me&&(x.includes(me)||me.includes(x)))||/\bkd3\b/.test(x));
+ if(mine[0]&&!mine[1])return 2;if(mine[1]&&!mine[0])return 1;return 0;
+};
+function scTeamsList(){
+ const L=LG(),M={};
+ L.scouts.forEach(g=>g.teams.forEach((t,i)=>{const k=tkey(t.name);(M[k]=M[k]||{k,name:t.name,n:0}).n++}));
+ return Object.values(M).filter(x=>!/\bkd3\b/.test(x.k)).sort((a,b)=>a.name.localeCompare(b.name,'es'));
+}
+
+function scChips(cl){
+ const row=(title,cls,arr)=>arr.length?`<div class="scrow"><span class="sctt">${title}</span>${arr.map(c=>`<span class="scchip ${cls}">${c.short}</span>`).join('')}</div>`:'';
+ return row('Ojo con','bad',cl.filter(c=>c.tone==='bad'&&c.short))+row('Aprovecha','ok',cl.filter(c=>c.tone==='ok'&&c.short));
+}
+const scCard=(title,items,extra)=>`<div class="card sccard"><h4>${title}</h4>${extra||''}${items.length?`<ul class="says">${items.map(c=>`<li><span class="tl ${c.tone}"></span><span>${c.txt}</span></li>`).join('')}</ul>`:(extra?'':'<p class="mut">Sin datos suficientes.</p>')}</div>`;
+function scBars(T,g){
+ const tot=T.score||1,seg=[['Canastas de 2',T.pts2,'var(--s1)'],['Triples',T.pts3,'var(--s2)'],['Tiros libres',T.ptsFT,'var(--axis)']];
+ const top=Object.values(T.pl).sort((a,b)=>b.pts-a.pts).filter(p=>p.pts>0).slice(0,4),mx=top.length?top[0].pts:1;
+ return `<div class="mut" style="font-size:12px;margin-bottom:4px">De dónde vienen sus ${T.score} puntos</div><div class="scstack">${seg.map(([l,v,c])=>`<i style="width:${v/tot*100}%;background:${c}" title="${l}: ${v}"></i>`).join('')}</div>
+ <div class="sclegend">${seg.map(([l,v,c])=>`<span><i style="background:${c}"></i>${l} ${scPct(v,tot)}%</span>`).join('')}</div>
+ <div class="mut" style="font-size:12px;margin:12px 0 4px">Quién los anota</div>${top.map(p=>`<div class="scbar"><span>${esc(scShort(g.pl[p.i]))}</span><div><i style="width:${p.pts/mx*100}%"></i></div><b>${p.pts}</b></div>`).join('')}`;
+}
+function scFlow(g,A,t){
+ const W=640,H=160,ml=34,mr=8,mt=12,mb=22,end=A.endT||40,pts=[[0,0]];let pa=0,pb=0;
+ g.ev.forEach(e=>{if(e.a!==pa||e.b!==pb){pts.push([scT(e.p,e.m),t===1?e.a-e.b:e.b-e.a]);pa=e.a;pb=e.b}});
+ const R=Math.max(5,Math.ceil(Math.max(...pts.map(p=>Math.abs(p[1])))/5)*5);
+ const X=v=>(ml+v/end*(W-ml-mr)).toFixed(1),Y=v=>(mt+(R-v)/(2*R)*(H-mt-mb)).toFixed(1);
+ let d=`M${X(0)},${Y(0)}`,prev=0;pts.slice(1).forEach(p=>{d+=` L${X(p[0])},${Y(prev)} L${X(p[0])},${Y(p[1])}`;prev=p[1]});d+=` L${X(end)},${Y(prev)}`;
+ const nq=end>40?4+Math.ceil((end-40)/SC_OT):4,qx=[];for(let k=1;k<nq;k++)qx.push(k<=4?k*SC_LEN:40+(k-4)*SC_OT);
+ const lab=(k)=>{const a=k===0?0:(k<=4?k*SC_LEN:40+(k-4)*SC_OT);const b=Math.min(end,(k+1)<=4?(k+1)*SC_LEN:40+(k+1-4)*SC_OT);return`<text x="${X((a+b)/2)}" y="${H-6}" text-anchor="middle" font-size="11" fill="var(--mut)">${k<4?'C'+(k+1):'Pr'}</text>`};
+ return `<svg viewBox="0 0 ${W} ${H}" style="width:100%;height:auto;max-height:200px" role="img" aria-label="Diferencia de puntos a lo largo del partido">
+  <line x1="${ml}" x2="${W-mr}" y1="${Y(0)}" y2="${Y(0)}" stroke="var(--axis)" stroke-width="1"/>
+  ${qx.map(v=>`<line x1="${X(v)}" x2="${X(v)}" y1="${mt}" y2="${H-mb}" stroke="var(--line)" stroke-dasharray="3 3"/>`).join('')}
+  <text x="${ml-6}" y="${Number(Y(R))+4}" text-anchor="end" font-size="11" fill="var(--mut)">+${R}</text>
+  <text x="${ml-6}" y="${Number(Y(0))+4}" text-anchor="end" font-size="11" fill="var(--mut)">0</text>
+  <text x="${ml-6}" y="${Number(Y(-R))+4}" text-anchor="end" font-size="11" fill="var(--mut)">-${R}</text>
+  <path d="${d}" fill="none" stroke="var(--primary)" stroke-width="2.2" stroke-linejoin="round"/>
+  ${Array.from({length:nq},(_,k)=>lab(k)).join('')}</svg>
+  <p class="note" style="margin:2px 0 0">Diferencia de puntos de ${esc(A.T[t].name)} a lo largo del partido: por encima de la línea va ganando, por debajo va perdiendo.</p>`;
+}
+function scGameCard(g,t,open){
+ const A=scAnalyze(g),T=A.T[t],O=A.T[3-t],cl=scClaves(g,A,t),by=k=>cl.filter(c=>c.g===k);
+ const pls=Object.values(T.pl).sort((a,b)=>b.min-a.min||b.pts-a.pts);
+ const ord=ids=>[...ids].sort((x,y)=>scNum(g.pl[x])-scNum(g.pl[y]));
+ const us=Object.values(T.units).filter(u=>u.min>=2).sort((a,b)=>b.min-a.min).slice(0,8);
+ const win=T.score>O.score;
+ const unk=A.unk.length&&!RO?`<div class="card"><b>Faltan por asignar ${A.unk.length} jugador${A.unk.length>1?'es':''}</b> (no he podido saber de qué equipo son):
+  ${A.unk.map(i=>`<div class="row" style="margin-top:6px"><span>${esc(scShort(g.pl[i]))}</span><select data-scfix="${g.id}" data-i="${i}"><option value="">¿De cuál?</option><option value="1">${esc(g.teams[0].name)}</option><option value="2">${esc(g.teams[1].name)}</option></select></div>`).join('')}</div>`:'';
+ const q=T.q.map((v,i)=>`<tr><td class="l">Cuarto ${i+1}</td><td>${v}</td><td>${O.q[i]}</td><td>${sg(v-O.q[i])}</td></tr>`).join('');
+ const sin=T.sinCinco+O.sinCinco>0?`<p class="note">Los quintetos cubren el ${scPct(T.score+O.score-T.sinCinco-O.sinCinco,T.score+O.score)}% de los puntos (el resto ocurrió durante cambios).</p>`:'';
+ const fl=Object.entries(T.fouls).map(([p,n])=>`C${p}: ${n}`).join(' · ');
+ return `<details class="card scgame" ${open?'open':''}>
+  <summary><b>${esc(T.name)} ${T.score} – ${O.score} ${esc(O.name)}</b><span class="pill">${win?'Ganó':'Perdió'}</span><span class="mut">${esc(g.date)}</span></summary>
+  <div style="margin-top:10px">
+  ${(g.warn||[]).map(w=>`<p class="note" style="color:var(--bad)">${esc(w)}</p>`).join('')}
+  ${scChips(cl)||'<p class="mut">Nada destacable en este partido.</p>'}
+  ${unk}
+  <div class="split" style="margin-top:12px"><div>${scCard('Cómo anotan',by('anota'),scBars(T,g))}</div><div>${scCard('Tiros libres y faltas',by('tl'),'')}</div></div>
+  <div class="split"><div>${scCard('Quintetos y rotación',by('quint'),'')}</div><div>${scCard('Rachas y tiempos muertos',by('rachas'),'')}</div></div>
+  <div class="card sccard"><h4>Cómo fue el partido</h4>${scFlow(g,A,t)}
+   <table style="margin-top:8px"><tr><th class="l"></th><th>${esc(T.name)}</th><th>${esc(O.name)}</th><th>Dif.</th></tr>${q}</table>${by('cuartos').map(c=>`<p class="note">${c.txt}</p>`).join('')}</div>
+  <details class="scsub" open><summary>Jugadores</summary><div class="scroll"><table><tr><th class="l">Jugador</th><th>Min</th><th>Pts</th><th>TL</th><th>T2 anot.</th><th>T3 anot.</th><th>Faltas</th><th>+/-</th></tr>
+  ${pls.map(p=>`<tr><td class="l">${esc(scShort(g.pl[p.i]))}${p.st?' <small class="mut">titular</small>':''}</td><td>${p.min}</td><td><b>${p.pts}</b></td><td>${p.ftm}/${p.fta}</td><td>${p.t2}</td><td>${p.t3}</td><td>${p.fl}</td><td>${sg(p.pm)}</td></tr>`).join('')}</table></div>
+  <p class="note">T2 y T3: la federación solo publica los tiros anotados, no los fallados, así que no se puede calcular el porcentaje de tiro. Los minutos salen de las entradas y salidas (aproximados, al minuto). ${fl?'Faltas por cuarto: '+fl+'.':''}</p></details>
+  <details class="scsub"><summary>Quintetos (los que más han jugado)</summary><div class="scroll"><table><tr><th class="l">Quinteto</th><th>Min</th><th>A favor</th><th>En contra</th><th>+/-</th></tr>
+  ${us.map(u=>`<tr><td class="l" style="white-space:normal">${ord(u.ids).map(i=>esc(scShort(g.pl[i]))).join(' · ')}</td><td>${u.min}</td><td>${u.pf}</td><td>${u.pc}</td><td><b>${sg(u.pf-u.pc)}</b></td></tr>`).join('')||'<tr><td class="l" colspan="5">Sin datos suficientes de cambios.</td></tr>'}</table></div>${sin}</details>
+  <div class="row" style="margin-top:12px"><span class="grow"></span>${RO?'':`<button class="dan" data-sc="del" data-g="${g.id}">Quitar partido</button>`}</div>
+  </div></details>`;
+}
+
+/* ===== Comparativa con nuestro equipo ===== */
+const SC_STOP=new Set(['cb','club','baloncesto','junior','mas','masculino','b','c','de','del','la','el']);
+const scTok=n=>new Set(tkey(n).split(' ').filter(w=>w&&!SC_STOP.has(w)));
+function scSameTeam(a,b){
+ const A=scTok(a),B=scTok(b);
+ if(!A.size||!B.size)return tkey(a)===tkey(b);
+ const sub=(x,y)=>[...x].every(w=>y.has(w));
+ return sub(A,B)||sub(B,A);
+}
+function scOwnGame(g){
+ const a=agg(g.events),pp={};
+ g.events.forEach(e=>{const v=e.type==='2M'?2:e.type==='3M'?3:e.type==='FTM'?1:0;if(v)pp[e.pid]=(pp[e.pid]||0)+v});
+ const mins=Object.values(g.min||{}).map(Number).filter(v=>v>0).sort((x,y)=>y-x);
+ return{name:g.opp||'Rival',date:g.date,pts:a.pts,pa:oppOf(g),p2:2*a.twm,p3:3*a.tpm,pft:a.ftm,n3:a.tpm,fta:a.fta,ftm:a.ftm,pf:a.pf,
+  top:Math.max(0,...Object.values(pp)),used:mins.length,top5:mins.length?sum(mins.slice(0,5),x=>x)/sum(mins,x=>x):null,
+  q:[0,1,2,3].map(i=>agg(g.events.filter(e=>e.q===QS[i])).pts),qo:[0,1,2,3].map(i=>qOpp(g,i))};
+}
+function scTheirGame(g,t){
+ const A=scAnalyze(g),T=A.T[t],O=A.T[3-t],pls=Object.values(T.pl),mins=pls.map(p=>p.min).filter(v=>v>0).sort((x,y)=>y-x);
+ return{name:O.name,date:g.date,pts:T.score,pa:O.score,p2:T.pts2,p3:T.pts3,pft:T.ptsFT,n3:T.n3,fta:T.fta,ftm:T.ftm,pf:sum(pls,p=>p.fl),
+  top:Math.max(0,...pls.map(p=>p.pts)),used:mins.length,top5:mins.length?sum(mins.slice(0,5),x=>x)/sum(mins,x=>x):null,
+  q:T.q.slice(0,4),qo:O.q.slice(0,4)};
+}
+function scAgg(L){
+ const n=L.length,S2=f=>sum(L,f),avg=f=>n?S2(f)/n:null,wo=L.filter(x=>x.pa!=null),tot=S2(x=>x.pts)||1,w5=L.filter(x=>x.top5!=null);
+ return{n,pts:avg(x=>x.pts),pa:wo.length?sum(wo,x=>x.pa)/wo.length:null,dif:wo.length?sum(wo,x=>x.pts-x.pa)/wo.length:null,
+  s2:100*S2(x=>x.p2)/tot,s3:100*S2(x=>x.p3)/tot,sft:100*S2(x=>x.pft)/tot,n3:avg(x=>x.n3),fta:avg(x=>x.fta),
+  ftp:S2(x=>x.fta)?100*S2(x=>x.ftm)/S2(x=>x.fta):null,pf:avg(x=>x.pf),top:100*S2(x=>x.top)/tot,used:avg(x=>x.used),
+  top5:w5.length?100*sum(w5,x=>x.top5)/w5.length:null,
+  q:[0,1,2,3].map(i=>avg(x=>x.q[i])),qo:[0,1,2,3].map(i=>{const w=L.filter(x=>x.qo[i]!=null);return w.length?sum(w,x=>x.qo[i])/w.length:null})};
+}
+const scN=(v,d)=>v==null?'–':v.toFixed(d==null?1:d),scP=v=>v==null?'–':Math.round(v)+'%',scS=v=>v==null?'–':sg(+v.toFixed(1));
+const SC_ROWS=[['Puntos anotados','pts',1,scN],['Puntos encajados','pa',-1,scN],['Diferencia media','dif',1,scS],
+ ['Puntos de canastas de 2','s2',0,scP],['Puntos de triples','s3',0,scP],['Puntos de tiros libres','sft',0,scP],
+ ['Triples anotados','n3',0,scN],['Tiros libres lanzados','fta',0,scN],['% de tiros libres','ftp',1,scP],['Faltas cometidas','pf',-1,scN],
+ ['Peso del máximo anotador','top',0,scP],['Jugadores usados','used',0,scN],['Minutos de los 5 que más juegan','top5',0,scP]];
+function scDirect(rivalName){return vGames().filter(g=>scSameTeam(g.opp||'',rivalName)).map(g=>({date:g.date,pts:teamPts(g),pa:oppOf(g)}))}
+function scCommonRows(ownL,theirL){
+ const me=S.settings.team||TEAM0,rows=[];
+ ownL.forEach(o=>theirL.forEach(r=>{
+  if(scSameTeam(r.name,me)||/\bkd3\b/.test(tkey(r.name)))return;
+  if(o.pa!=null&&scSameTeam(o.name,r.name))rows.push({opp:r.name,os:o.pts+'-'+o.pa,od:o.pts-o.pa,rs:r.pts+'-'+r.pa,rd:r.pts-r.pa});
+ }));
+ return rows;
+}
+function scCompareHTML(rivalName,theirL){
+ const me=S.settings.team||TEAM0,own=vGames().map(scOwnGame);
+ if(!own.length)return `<div class="card"><h4>Comparativa con ${esc(me)}</h4><p class="mut">Aún no hay partidos tuyos etiquetados para comparar.</p></div>`;
+ const A=scAgg(own),B=scAgg(theirL),pl=n=>n+' partido'+(n===1?'':'s');
+ const win=(k,hi)=>{
+  if(!hi||A[k]==null||B[k]==null)return['',''];
+  const d=(A[k]-B[k])*hi,tol=0.05*Math.max(Math.abs(A[k]),Math.abs(B[k]),1);
+  if(Math.abs(d)<tol)return['',''];
+  return d>0?['scok','']:['','scko'];
+ };
+ const rows=SC_ROWS.map(([l,k,hi,f])=>{const [ca,cb]=win(k,hi);return `<tr><td class="l">${l}</td><td class="${ca}">${f(A[k])}</td><td class="${cb}">${f(B[k])}</td></tr>`}).join('');
+ const hasQ=A.qo.every(v=>v!=null)&&B.qo.every(v=>v!=null);
+ const qrows=[0,1,2,3].map(i=>{
+  const na=A.q[i]-(A.qo[i]||0),nb=B.q[i]-(B.qo[i]||0);
+  return `<tr><td class="l">Cuarto ${i+1}</td><td>${scN(A.q[i])} – ${scN(A.qo[i])}</td><td>${scN(B.q[i])} – ${scN(B.qo[i])}</td></tr>`}).join('');
+ /* lectura */
+ const R=[],add=(tone,txt)=>R.push({tone,txt});
+ if(A.dif!=null&&B.dif!=null)add(B.dif>A.dif+3?'bad':A.dif>B.dif+3?'ok':'neu',`Diferencia media de puntos: vosotros <b>${scS(A.dif)}</b> (${pl(A.n)}); ellos <b>${scS(B.dif)}</b> (${pl(B.n)}).`);
+ if(B.fta-A.fta>=5)add('bad',`Ellos lanzan más tiros libres (${scN(B.fta)} por partido frente a ${scN(A.fta)}): vigilad las faltas.`);
+ else if(A.fta-B.fta>=5)add('ok',`Vosotros vais más a la línea (${scN(A.fta)} tiros libres por partido frente a ${scN(B.fta)}).`);
+ if(Math.abs(A.s3-B.s3)>=10)add('neu',`Los triples pesan más en ${A.s3>B.s3?'vuestro':'su'} ataque: ${scP(A.s3)} de vuestros puntos y ${scP(B.s3)} de los suyos.`);
+ if(B.pf-A.pf>=4)add('ok',`Cometen más faltas que vosotros (${scN(B.pf)} por partido frente a ${scN(A.pf)}).`);
+ else if(A.pf-B.pf>=4)add('bad',`Cometéis más faltas que ellos (${scN(A.pf)} por partido frente a ${scN(B.pf)}).`);
+ if(B.top-A.top>=8)add('ok',`Dependen más de su máximo anotador: ${scP(B.top)} de sus puntos (vosotros ${scP(A.top)}).`);
+ else if(A.top-B.top>=8)add('neu',`Vuestro ataque depende más de un solo jugador (${scP(A.top)} frente a ${scP(B.top)} de ellos).`);
+ if(hasQ){
+  const net=[0,1,2,3].map(i=>({i:i+1,a:A.q[i]-A.qo[i],b:B.q[i]-B.qo[i]}));
+  const w=[...net].sort((x,y)=>(y.b-y.a)-(x.b-x.a))[0],b=[...net].sort((x,y)=>(y.a-y.b)-(x.a-x.b))[0];
+  if(w.b-w.a>=3)add('bad',`El cuarto en que más os superan es el ${w.i}: ellos ${scS(w.b)} de media y vosotros ${scS(w.a)}.`);
+  if(b.a-b.b>=3)add('ok',`El cuarto en que más los superáis es el ${b.i}: vosotros ${scS(b.a)} y ellos ${scS(b.b)}.`);
+ }
+ const dir=scDirect(rivalName),com=scCommonRows(own,theirL);
+ const dirH=dir.length?`<h4 style="margin-top:14px">Ya os habéis enfrentado</h4><ul class="says">${dir.map(d=>`<li><span class="tl ${d.pa==null?'neu':d.pts>d.pa?'ok':'bad'}"></span><span>${esc(d.date)}: <b>${d.pts}${d.pa!=null?' – '+d.pa:''}</b> ${d.pa!=null?(d.pts>d.pa?'(ganasteis)':'(perdisteis)'):''}</span></li>`).join('')}</ul>`:'';
+ const comH=com.length?`<h4 style="margin-top:14px">Rivales comunes</h4><table><tr><th class="l">Rival</th><th>${esc(me)}</th><th>${esc(rivalName)}</th><th>Quién lo hizo mejor</th></tr>${com.map(c=>`<tr><td class="l">${esc(c.opp)}</td><td>${c.os} (${sg(c.od)})</td><td>${c.rs} (${sg(c.rd)})</td><td>${c.od===c.rd?'Igual':c.od>c.rd?'Vosotros':'Ellos'} <small class="mut">(${sg(Math.abs(c.od-c.rd))} pts)</small></td></tr>`).join('')}</table><p class="note">Comparación indirecta: se compara el resultado de cada uno contra el mismo rival. Con tan pocos partidos es solo orientativa.</p>`:'';
+ return `<details class="card scgame" open><summary><b>Comparativa con ${esc(me)}</b><span class="mut">${pl(A.n)} vuestros · ${pl(B.n)} suyos</span></summary>
+  <div style="margin-top:10px">${R.length?`<ul class="says">${R.map(c=>`<li><span class="tl ${c.tone}"></span><span>${c.txt}</span></li>`).join('')}</ul>
+  <p class="note"><span class="tl bad"></span>ventaja suya · <span class="tl ok"></span>ventaja vuestra · <span class="tl neu"></span>dato</p>`:''}
+  <div class="scroll"><table><tr><th class="l">Por partido</th><th>${esc(me)}</th><th>${esc(rivalName)}</th></tr>${rows}</table></div>
+  ${hasQ?`<h4 style="margin-top:14px">Puntos por cuarto (anotados – encajados, de media)</h4><table><tr><th class="l"></th><th>${esc(me)}</th><th>${esc(rivalName)}</th></tr>${qrows}</table>`:''}
+  ${dirH}${comH}
+  <p class="note">Para comparar de forma justa solo se usan datos que existen en los dos lados (los tiros fallados, rebotes y pérdidas de la federación no están publicados). Vuestros datos son los que etiquetáis vosotros; los del rival, los de la mesa.</p></div></details>`;
+}
+
+function scView(){
+ const L=LG(),teams=scTeamsList();
+ const imp=RO?'':`<div class="card"><h4>Añadir un partido del rival (sin vídeo)</h4>
+  <p class="note">1) Entra en el partido en la web de la FBCV y abre la pestaña <b>Jugadas</b>. 2) Selecciona toda la página (Cmd+A) y cópiala (Cmd+C). 3) Pégala aquí. La app reconstruye quintetos, rachas, faltas, tiempos muertos y tiros libres.</p>
+  <textarea id="sctxt" rows="5" style="width:100%" placeholder="Pega aquí el texto de la pestaña Jugadas…"></textarea>
+  <details id="scnm" style="margin-top:8px"><summary><b>¿Se pega sin el marcador de arriba?</b> Escribe los equipos</summary>
+   <p class="note">La web de la FBCV no deja copiar la cabecera. Pon los dos equipos tal como salen en ella: primero el de la <b>izquierda</b> y luego el de la <b>derecha</b>. Marcador y cuartos los saco de las jugadas. (Alternativa: añade al principio del texto una línea <code>EQUIPOS: Equipo izquierda | Equipo derecha</code>.)</p>
+   <div class="row"><input id="scA" list="scnames" placeholder="Equipo de la izquierda" style="flex:1"><input id="scB" list="scnames" placeholder="Equipo de la derecha" style="flex:1"></div>
+   <datalist id="scnames">${teams.map(x=>`<option value="${esc(x.name)}">`).join('')}</datalist></details>
+  <div class="row" style="margin-top:8px"><button class="pri" id="scgo">Analizar y guardar</button><label class="btn">Cargar archivos .txt<input type="file" id="scfile" accept=".txt,text/plain" multiple style="display:none"></label><span class="note">Puedes pegar varios partidos seguidos separados por una línea <code>=====PARTIDO=====</code>.</span></div></div>`;
+ if(!teams.length)return imp+`<div class="empty"><b>Aún no hay partidos de rivales</b>${RO?'Añádelos en mi-stats en el Mac y vuelve a importar la copia.':'Pega las jugadas de un partido de la federación para empezar.'}</div>`;
+ let sel=LGV.scTeam;if(!teams.find(x=>x.k===sel))sel=LGV.scTeam=teams[0].k;
+ const games=L.scouts.filter(g=>g.teams.some(t=>tkey(t.name)===sel)).sort((a,b)=>String(b.date).localeCompare(String(a.date)));
+ const agg={};
+ const cards=games.map((g,ix)=>{
+  const t=tkey(g.teams[0].name)===sel?1:2,A=scAnalyze(g);
+  Object.values(A.T[t].pl).forEach(p=>{
+   const k=g.pl[p.i],a=agg[k]=agg[k]||{k,gp:0,pts:0,min:0,ftm:0,fta:0,fl:0,pm:0};
+   a.gp++;a.pts+=p.pts;a.min+=p.min;a.ftm+=p.ftm;a.fta+=p.fta;a.fl+=p.fl;a.pm+=p.pm});
+  return scGameCard(g,t,ix===0);
+ }).join('');
+ const theirL=games.map(g=>scTheirGame(g,tkey(g.teams[0].name)===sel?1:2));
+ const rivalName=(teams.find(x=>x.k===sel)||{}).name||'';
+ const rows=Object.values(agg).sort((a,b)=>b.pts-a.pts);
+ const aggT=games.length>1?`<h3>Jugadores en ${games.length} partidos</h3><div class="card scroll"><table><tr><th class="l">Jugador</th><th>PJ</th><th>Pts/p</th><th>Min/p</th><th>TL</th><th>Faltas/p</th><th>+/- total</th></tr>
+  ${rows.map(a=>`<tr><td class="l">${esc(scShort(a.k))}</td><td>${a.gp}</td><td><b>${f1(a.pts/a.gp)}</b></td><td>${f1(a.min/a.gp)}</td><td>${a.ftm}/${a.fta}</td><td>${f1(a.fl/a.gp)}</td><td>${sg(a.pm)}</td></tr>`).join('')}</table></div>`:'';
+ let w=0,l=0,pf=0,pc=0;
+ games.forEach(g=>{const t=tkey(g.teams[0].name)===sel?1:2,a=g.teams[t-1].s,b=g.teams[2-t].s;pf+=a;pc+=b;a>b?w++:l++});
+ const resumen=`<div class="card"><div class="row"><b>${esc((teams.find(x=>x.k===sel)||{}).name||'')}</b><span class="pill">${games.length} partido${games.length===1?'':'s'}: ${w} ganado${w===1?'':'s'}, ${l} perdido${l===1?'':'s'}</span><span class="mut">Anotan ${f1(pf/games.length)} y encajan ${f1(pc/games.length)} de media</span></div></div>`;
+ return imp+`<div class="row" style="margin:6px 0 14px"><label>Rival a estudiar <select id="scteam">${teams.map(x=>`<option value="${esc(x.k)}" ${x.k===sel?'selected':''}>${esc(x.name)} (${x.n})</option>`).join('')}</select></label></div>`+resumen+scCompareHTML(rivalName,theirL)+aggT+cards;
+}
+
+function scWire(){
+ const L=LG();
+ const s0=$('#scteam');if(s0)s0.onchange=()=>{LGV.scTeam=s0.value;viewLiga()};
+ if(RO)return;
+ const b=$('#scgo');
+ const done=res=>{
+  if(res.errs.length)alert('No he podido leer:\n\n'+res.errs.join('\n'));
+  if(!res.last)return;
+  const r=res.last,k=scRival(r);
+  LGV.scTeam=tkey(r.teams[k?k-1:0].name);
+  toast(`${res.ok} partido${res.ok===1?'':'s'} nuevo${res.ok===1?'':'s'}`+(res.upd?` · ${res.upd} actualizado${res.upd===1?'':'s'}`:'')+(res.unk?` · asigna ${res.unk} jugador(es)`:''));
+  viewLiga();
+ };
+ if(b)b.onclick=()=>{
+  const raw=$('#sctxt').value;
+  if(!raw.trim())return toast('Pega primero el texto de la pestaña Jugadas');
+  const A=$('#scA').value.trim(),B=$('#scB').value.trim();
+  const res=scImportRaw(raw,A&&B?[A,B]:null);
+  if(res.need&&!res.last){
+   const d=$('#scnm');d.open=true;
+   if(res.need[0]&&!A)$('#scA').value=res.need[0];if(res.need[1]&&!B)$('#scB').value=res.need[1];
+   (A?$('#scB'):$('#scA')).focus();
+  }
+  if(!res.last&&res.errs.length)return toast(res.errs[0]);
+  done(res);
+ };
+ const ff=$('#scfile');
+ if(ff)ff.onchange=async()=>{
+  const txts=await Promise.all([...ff.files].map(f=>f.text()));
+  ff.value='';
+  const res=scImportRaw(txts.join('\n=====PARTIDO=====\n'));
+  if(!res.last&&res.errs.length)return toast(res.errs[0]);
+  done(res);
+ };
+ const s=$('#scteam');if(s)s.onchange=()=>{LGV.scTeam=s.value;viewLiga()};
+ app.onchange=e=>{
+  const f=e.target.closest('[data-scfix]');
+  if(f&&f.value){const g=L.scouts.find(x=>x.id===f.dataset.scfix);if(g){g.fix=g.fix||{};g.fix[f.dataset.i]=+f.value;save();viewLiga()}}
+ };
+ app.onclick=e=>{
+  const x=e.target.closest('[data-sc="del"]');
+  if(x&&confirm('¿Quitar este partido del rival?')){L.scouts=L.scouts.filter(g=>g.id!==x.dataset.g);save();viewLiga()}
+ };
+}
+
 function viewLiga(){
  const c=lgBase(),st=c.table.length?lgStudy(c):null;
  let body='';
  if(LGV.tab==='tabla'){
   body=c.table.length?lgTabla(c):`<div class="empty"><b>Aún no hay resultados de la liga</b>${RO?'Introduce las jornadas en mi-stats del Mac y vuelve a importar la copia.':'Añade la primera jornada en la pestaña «Jornadas» (pega los resultados, uno por línea).'}${RO?'':'<p><button class="pri" id="lggo">Ir a Jornadas</button></p>'}</div>`;
  }else if(LGV.tab==='jornadas')body=lgJornadas(c);
+ else if(LGV.tab==='rivales')body=scView();
  else body=c.table.length?lgEstudio(c):'<div class="empty"><b>Sin datos todavía</b>Añade primero algunas jornadas.</div>';
  app.innerHTML=`<h2>Liga <small>${esc(S.settings.team||TEAM0)}${st&&st.N?` · ${st.t.pos}º de ${st.T}`:''}</small></h2>
- <div class="row">${segHTML('lgt',{tabla:'Clasificación',jornadas:'Jornadas',estudio:'Estudio'},LGV.tab)}</div><div style="margin-top:14px">${body}</div>`;
+ <div class="row">${segHTML('lgt',{tabla:'Clasificación',jornadas:'Jornadas',estudio:'Estudio',rivales:'Rivales'},LGV.tab)}</div><div style="margin-top:14px">${body}</div>`;
  wireSeg('lgt',v=>{LGV.tab=v;viewLiga()});
  const go2=$('#lggo');if(go2)go2.onclick=()=>{LGV.tab='jornadas';viewLiga()};
+ if(LGV.tab==='rivales'){scWire();return}
  if(RO||LGV.tab!=='jornadas')return;
  const L=LG();
  $('#lgadd').onclick=()=>{
@@ -1903,7 +2434,7 @@ function viewLiga(){
    else if(a==='delr'&&r){if(confirm('¿Quitar la jornada '+r.n+' con todos sus partidos?')){L.rounds=L.rounds.filter(x=>x!==r);save();viewLiga()}}
    else if(a==='delm'){const tr=b.closest('tr'),rr=L.rounds.find(x=>x.id===tr.dataset.r);if(rr){rr.m=rr.m.filter(x=>x.id!==tr.dataset.m);save();viewLiga()}}
    return}
-  if(e.target.id==='lgwipe'&&confirm('¿Borrar TODA la liga (jornadas y resultados)? Tus partidos etiquetados no se tocan.')){delete S.league;save();viewLiga()}
+  if(e.target.id==='lgwipe'&&confirm('¿Borrar TODA la liga (jornadas, resultados y rivales analizados)? Tus partidos etiquetados no se tocan.')){delete S.league;save();viewLiga()}
  };
 }
 function ligaMini(){
